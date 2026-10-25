@@ -290,6 +290,7 @@ export async function runCaptureHdrStage(
         width,
         height,
         codec: preset.codec,
+        useGpu: job.config.useGpu,
         preset: preset.preset,
         quality: effectiveQuality,
         bitrate: effectiveBitrate,
@@ -320,6 +321,7 @@ export async function runCaptureHdrStage(
       height,
       abortSignal,
       hdrDiagnostics,
+      maxResidentWindows: Math.max(1, workerCount) + 1,
     });
     releaseHdrExtractionReservation = extracted.releaseReservation;
     for (const [id, source] of extracted.sources) hdrVideoFrameSources.set(id, source);

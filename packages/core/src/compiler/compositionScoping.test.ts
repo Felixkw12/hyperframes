@@ -43,6 +43,45 @@ describe("composition scoping", () => {
     }
   });
 
+  it("never replaces another mount's timeline under the scene's own id", () => {
+    const { document } = parseHTML("<main></main>");
+    const fakeWindow = { document, __timelines: {} as Record<string, unknown>, readBack: "" };
+    const run = (runtimeId: string, timeline: string) =>
+      new Function(
+        "window",
+        wrapScopedCompositionScript(
+          `window.__timelines.scene = ${JSON.stringify(timeline)};
+           window.readBack = window.__timelines.scene;`,
+          "scene",
+          undefined,
+          undefined,
+          runtimeId,
+        ),
+      )(fakeWindow);
+
+    run("scene", "first half");
+    run("scene-split", "second half");
+    expect(fakeWindow.__timelines).toEqual({ scene: "first half", "scene-split": "second half" });
+    expect(fakeWindow.readBack).toBe("second half");
+
+    // A mount that owns the scene's id keeps it when its script runs again.
+    const lone = { document, __timelines: {} as Record<string, unknown> };
+    const runLone = (timeline: string) =>
+      new Function(
+        "window",
+        wrapScopedCompositionScript(
+          `window.__timelines.scene = ${JSON.stringify(timeline)};`,
+          "scene",
+          undefined,
+          undefined,
+          "intro",
+        ),
+      )(lone);
+    runLone("v1");
+    runLone("v2");
+    expect(lone.__timelines).toEqual({ scene: "v2", intro: "v2" });
+  });
+
   it("scopes regular selectors while preserving global at-rules", () => {
     const scoped = scopeCssToComposition(
       `
@@ -590,6 +629,34 @@ globalThis.gsap.to("p", { x: 1 });
     new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
 
     expect(targetCompositions).toEqual(["scene", "scene"]);
+  });
+
+  it("preserves missing GSAP selectors without targeting another composition", () => {
+    const { document } = parseHTML(`
+      <div data-composition-id="scene"></div>
+      <div data-composition-id="other"><span data-part="missing"></span></div>
+    `);
+    const targets: Element[][] = [];
+    const fakeWindow = {
+      document,
+      __timelines: {},
+      gsap: {
+        to(target: Element[]) {
+          targets.push(target);
+        },
+      },
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `gsap.to('[data-part="missing"]', { opacity: 1 });`,
+      "scene",
+    );
+
+    new Function("window", "gsap", wrapped)(fakeWindow, fakeWindow.gsap);
+
+    expect(targets).toHaveLength(1);
+    expect(Array.isArray(targets[0])).toBe(true);
+    expect(targets[0]).toHaveLength(0);
+    expect(String(targets[0])).toBe('[data-part="missing"]');
   });
 
   it("scopes getElementById when duplicate IDs exist across composition roots", () => {

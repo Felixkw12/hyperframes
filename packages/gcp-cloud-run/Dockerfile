@@ -80,7 +80,7 @@ RUN case "$TARGETARCH" in \
 # Pinned deliberately. The build-stage contract probe below launches this
 # exact executable and requires a renderer-ready warm-up plus a PNG-returning
 # HeadlessExperimental.beginFrame before the image can build.
-RUN npx --yes @puppeteer/browsers install chrome-headless-shell@148.0.7778.167 \
+RUN npx --yes @puppeteer/browsers install chrome-headless-shell@152.0.7977.30 \
       --path /opt/puppeteer \
     && CHS="$(find /opt/puppeteer/chrome-headless-shell -name chrome-headless-shell -type f | head -n1)" \
     && mkdir -p /opt/chrome \
@@ -132,6 +132,7 @@ RUN timeout 300 bun install --frozen-lockfile \
 # argument list with the production engine helper so a launcher-flag regression
 # invalidates this layer and fails the contract instead of testing a duplicate
 # hard-coded profile.
+COPY packages/core/ packages/core/
 COPY packages/parsers/ packages/parsers/
 COPY packages/engine/ packages/engine/
 COPY packages/aws-lambda/scripts/probe-beginframe.ts packages/aws-lambda/scripts/probe-beginframe.ts

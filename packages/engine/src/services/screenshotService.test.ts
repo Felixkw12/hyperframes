@@ -3,6 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { type Page } from "puppeteer-core";
+import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
 import {
   pageScreenshotCapture,
   pageContentExceedsCaptureHeight,
@@ -558,6 +559,33 @@ describe("video-frame injection respects ancestor visibility", () => {
     };
   }
 
+  it("switches frame visibility by render identity when scenes share an authored video id", async () => {
+    const { setup, teardown } = withGlobals(setupHostHiddenScenario({}));
+    try {
+      const first = setup.video.cloneNode() as HTMLVideoElement;
+      first.setAttribute("data-hf-render-id", "pip");
+      setup.video.setAttribute("data-hf-render-id", "pip__hf2");
+      const firstFrame = setup.document.createElement("img");
+      const secondFrame = setup.document.createElement("img");
+      firstFrame.className = secondFrame.className = "__render_frame__";
+      setup.video.before(first, firstFrame);
+      setup.video.after(secondFrame);
+      const page = {
+        ...passthroughPage(),
+        evaluateOnNewDocument: async (fn: (attr: string) => void, attr: string) => fn(attr),
+      } as unknown as Page;
+      await installMediaRenderIdBridge(page);
+      await syncVideoFrameVisibility(page, ["pip__hf2"]);
+      expect(firstFrame.style.visibility).toBe("hidden");
+      expect(secondFrame.style.visibility).toBe("visible");
+      await syncVideoFrameVisibility(page, ["pip"]);
+      expect(firstFrame.style.visibility).toBe("visible");
+      expect(secondFrame.style.visibility).toBe("hidden");
+    } finally {
+      teardown();
+    }
+  });
+
   it("skips replacement-frame creation when the video's host has visibility:hidden", async () => {
     const { teardown, setup } = withGlobals(setupHostHiddenScenario({ visibility: "hidden" }));
     try {
@@ -872,6 +900,40 @@ describe("video-frame injection respects ancestor visibility", () => {
 
       expect(caption.style.visibility).toBe("hidden");
       expect(caption.hasAttribute("data-hf-dom-layer-mask-hidden")).toBe(false);
+    } finally {
+      teardown();
+    }
+  });
+
+  it("applyDomLayerMask hides a promoted overlay's children with it, except a layer shown on its own", async () => {
+    const { window, document } = parseHTML(
+      `<html><head></head><body>
+        <div id="host" data-start="0" data-duration="6">
+          <div id="overlay"><span id="plain">tint</span><div id="nested"><b id="deep">layer</b></div></div>
+        </div>
+      </body></html>`,
+    );
+    const visibilityOf = (id: string) =>
+      (document.getElementById(id) as HTMLElement).style.visibility || "";
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: (el: Element) => ({
+        display: (el as HTMLElement).style.display || "block",
+        visibility: (el as HTMLElement).style.visibility || "visible",
+      }),
+    });
+
+    const teardown = installDomMaskGlobals({ window, document });
+    try {
+      await applyDomLayerMask(passthroughPage(), ["host", "nested"], ["overlay"]);
+      expect(visibilityOf("overlay")).toBe("hidden");
+      expect(visibilityOf("plain")).toBe("hidden");
+      expect(visibilityOf("nested")).toBe("");
+      expect(visibilityOf("deep")).toBe("");
+
+      await removeDomLayerMask(passthroughPage(), ["overlay"]);
+      expect(visibilityOf("overlay")).toBe("");
+      expect(visibilityOf("plain")).toBe("");
     } finally {
       teardown();
     }
