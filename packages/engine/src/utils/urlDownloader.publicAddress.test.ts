@@ -48,4 +48,21 @@ describe("downloads refuse hosts that resolve to private addresses", () => {
       kind: "http_rejected",
     });
   });
+
+  it("keeps Node's own fetch when it goes through an env proxy, which resolves the name", async () => {
+    answers.list = [{ address: "10.1.2.3", family: 4 }];
+    vi.stubEnv("HTTPS_PROXY", "http://proxy.test:3128");
+    vi.stubEnv("NODE_USE_ENV_PROXY", "1");
+    const viaProxy = vi.fn(async () => new Response("<html></html>"));
+    vi.stubGlobal("fetch", viaProxy);
+    try {
+      await expect(
+        fetchPublicHttpsText("https://assets.example.test/x.html", { maxBytes: 1024 }),
+      ).resolves.toBe("<html></html>");
+      expect(viaProxy).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
 });

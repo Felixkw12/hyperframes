@@ -18,6 +18,7 @@ import {
 } from "fs";
 import { createHash, randomUUID } from "crypto";
 import dns from "node:dns";
+import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
 import { BlockList, isIP, type LookupFunction } from "node:net";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
@@ -492,6 +493,8 @@ type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 let undiciTransport: Promise<DownloadFetch> | undefined;
 const fetchPublic: DownloadFetch = async (url, init) => {
+  // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
+  if (fetchGoesThroughEnvProxy()) return fetch(url, init);
   undiciTransport ??= import("undici").then(({ Agent, fetch: undiciFetch }) => {
     const dispatcher = new Agent({ connect: { lookup: publicOnlyLookup } });
     return (target, options) =>
